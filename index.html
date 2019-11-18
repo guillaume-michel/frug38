@@ -1,49 +1,344 @@
 <!doctype html>
 <html>
-	<head>
-		<meta charset="utf-8">
-		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
-		<title>reveal.js</title>
+	<title>Runtime Polymorphism in C++, the way it was meant to be...</title>
 
-		<link rel="stylesheet" href="css/reset.css">
-		<link rel="stylesheet" href="css/reveal.css">
-		<link rel="stylesheet" href="css/theme/black.css">
+	<link rel="stylesheet" href="css/reset.css">
+	<link rel="stylesheet" href="css/reveal.css">
+	<link rel="stylesheet" href="css/theme/black.css">
 
-		<!-- Theme used for syntax highlighting of code -->
-		<link rel="stylesheet" href="lib/css/monokai.css">
+	<!-- Theme used for syntax highlighting of code -->
+	<link rel="stylesheet" href="lib/css/monokai.css">
 
-		<!-- Printing and PDF exports -->
-		<script>
-			var link = document.createElement( 'link' );
-			link.rel = 'stylesheet';
-			link.type = 'text/css';
-			link.href = window.location.search.match( /print-pdf/gi ) ? 'css/print/pdf.css' : 'css/print/paper.css';
-			document.getElementsByTagName( 'head' )[0].appendChild( link );
-		</script>
-	</head>
-	<body>
-		<div class="reveal">
-			<div class="slides">
-				<section>Slide 1</section>
-				<section>Slide 2</section>
-			</div>
-		</div>
+	<!-- Printing and PDF exports -->
+	<script>
+	  var link = document.createElement( 'link' );
+	  link.rel = 'stylesheet';
+	  link.type = 'text/css';
+	  link.href = window.location.search.match( /print-pdf/gi ) ? 'css/print/pdf.css' : 'css/print/paper.css';
+	  document.getElementsByTagName( 'head' )[0].appendChild( link );
+	</script>
+  </head>
+  <body>
+	<div class="reveal">
+	  <div class="slides">
+		<section>
+          <h1>Runtime Polymorphism in C++</h1>
+          <h2>The way it was meant to be...</h2>
+        </section>
 
-		<script src="js/reveal.js"></script>
+        <section>
+          <h2>I am not the only one</h2>
+          <a href="https://www.youtube.com/watch?v=OtU51Ytfe04">C++Now 2018: Louis Dionne “Runtime Polymorphism: Back to the Basics”</a>
+          <p>Take-away: There are multiple way to implement runtime polymorphism</p>
+        </section>
 
-		<script>
-			// More info about config & dependencies:
-			// - https://github.com/hakimel/reveal.js#configuration
-			// - https://github.com/hakimel/reveal.js#dependencies
-			Reveal.initialize({
-				dependencies: [
-					{ src: 'plugin/markdown/marked.js' },
-					{ src: 'plugin/markdown/markdown.js' },
-					{ src: 'plugin/notes/notes.js', async: true },
-					{ src: 'plugin/highlight/highlight.js', async: true }
-				]
-			});
-		</script>
-	</body>
+        <section>
+          <h2>The Big Idea</h2>
+          <em>"I made up the term ‘object-oriented’, and I can tell you I didn’t have C++ in mind."</em>
+          <p>Alan Kay, OOPSLA '97</p>
+          <b class="fragment">It is not the object which is important, it is the message you send!</b>
+        </section>
+
+        <section>
+          <h2>Canonical Example in C++</h2>
+          <pre><code data-trim data-noescape>
+              struct Shape {
+                virtual void draw() = 0;
+                virtual float perimeter() = 0;
+                virtual ~Shape() = default;
+              };
+	      </code></pre>
+        </section>
+
+        <section>
+          <h2>Canonical Example in C++</h2>
+          <pre><code data-trim data-noescape>
+              struct Circle: Shape {
+                Circle(float radius): radius(radius) {}
+                virtual ~Circle() = default;
+                virtual void draw() override {
+                  std::cout << "Draw Circle" << std::endl;
+                }
+                virtual float perimeter() override {
+                  return 2 * (float)M_PI * radius;
+                }
+
+                float radius;
+             };
+	      </code></pre>
+        </section>
+
+        <section>
+          <h2>Canonical Example in C++</h2>
+          <pre><code data-trim data-noescape>
+              struct Square: Shape {
+                Square(float length): length(length) {}
+                virtual ~Square() = default;
+                virtual void draw() override {
+                  std::cout << "Draw Square" << std::endl;
+                }
+                virtual float perimeter() override {
+                  return 4 * length;
+                }
+
+                float length;
+              };
+	      </code></pre>
+        </section>
+        <section>
+          <h2>Canonical Example in C++</h2>
+          <pre><code data-trim data-noescape>
+              std::vector< std::unique_ptr< Shape > > shapes;
+              shapes.push_back(std::make_unique< Circle >(1.0f));
+              shapes.push_back(std::make_unique< Square >(1.0f));
+
+              for (auto& s : shapes) {
+                s->draw();
+                std::cout << "perimeter: " << s->perimeter() << std::endl;
+              }
+	      </code></pre>
+        </section>
+
+        <section>
+          <h2>What is Wrong?</h2>
+          <ul>
+            <li class="fragment">Mixing UI and business code in Shape interface</li>
+            <li class="fragment">Each time, I want to add a new method to the interface, I have to recompile the whole hierarchy</li>
+            <li class="fragment">Can be done, only on classes I own!</li>
+          </ul>
+
+          <em class="fragment">Root of Evil: C++ merges polymorphic functions into classes</em>
+        </section>
+
+        <section>
+          <h2>Generic Method in Common Lisp</h2>
+          <pre><code data-trim data-noescape>
+(defclass circle ()
+  (radius))
+
+(defclass square ()
+  (length))
+	      </code></pre>
+        </section>
+        <section>
+          <h2>Generic Method in Common Lisp</h2>
+          <pre><code data-trim data-noescape>
+(defgeneric draw (shape)
+  (:documentation "draw a shape"))
+
+(defmethod draw ((shape circle))
+  (format t "Draw a Circle"))
+
+(defmethod draw ((shape square))
+  (format t "Draw a Square"))
+	      </code></pre>
+        </section>
+
+        <section>
+          <h2>Generic Method in Common Lisp</h2>
+          <pre><code data-trim data-noescape>
+(defgeneric perimeter (shape)
+  (:documentation "compute a shape's perimeter"))
+
+(defmethod perimeter ((shape circle))
+  (format t "Compute Circle perimeter"))
+
+(defmethod perimeter ((shape square))
+  (format t "Compute Square perimeter"))
+	      </code></pre>
+        </section>
+
+        <section>
+          <h2>How does it look in C++?</h2>
+          <pre><code data-trim data-noescape>
+template< size_t N, typename R >
+struct Generic;
+          </code></pre>
+        </section>
+
+        <section>
+          <h2>How does it look in C++?</h2>
+          <pre><code data-trim data-noescape>
+template< typename R >
+struct Generic< 1, R > {
+  R operator()(std::any arg1) {
+    const std::string tname = arg1.type().name();
+    if (vtable.find(tname) != std::end(vtable)) {
+      return vtable[tname](arg1);
+    } else {
+      // did not find method for current type
+      throw std::runtime_error(std::string("Could not find method for type: ") + tname);
+    }
+  }
+  std::unordered_map< std::string,
+                      std::function< R(std::any) > > vtable;
+};
+          </code></pre>
+        </section>
+
+        <section>
+          <h2>How does it look in C++?</h2>
+          <pre><code data-trim data-noescape>
+template< size_t N, typename R >
+auto defgeneric() {
+  return Generic< N, R >{};
+}
+          </code></pre>
+        </section>
+
+        <section>
+          <h2>How does it look in C++?</h2>
+          <pre><code data-trim data-noescape>
+template< size_t N, typename R, typename Impl >
+void defmethod(Generic< N, R >& generic, Impl&& impl) {
+  static_assert(N == arity_v< Impl >, "Given implementation has wrong arity");
+  static_assert(std::is_same< R, return_type< Impl > >::value, "Given implementation has wrong return type");
+  if constexpr (N == 1) {
+      using Arg1 = argument_type< 0, Impl >;
+      generic.vtable.insert(
+        std::make_pair(
+          typeid(std::declval< Arg1 >()).name(),
+          [impl = std::forward< Impl >(impl)](std::any value) {
+             return impl(std::any_cast< Arg1 >(value));
+          }));
+  } else { static_assert(N>1, "arity > 1 not supported"); }
+}
+          </code></pre>
+        </section>
+
+        <section>
+          <h2>How does it look in C++?</h2>
+          <pre><code data-trim data-noescape>
+struct Circle {
+  float radius;
+};
+
+struct Square {
+  float length;
+};
+          </code></pre>
+        </section>
+
+        <section>
+          <h2>How does it look in C++?</h2>
+          <pre><code data-trim data-noescape>
+// defines a generic method with 1 argument called "draw" that returns void
+auto draw = defgeneric<1, void>();
+
+// method draw for Circle
+defmethod(draw,
+          [](Circle c) {
+            std::cout << "Draw Circle" << std::endl;
+          });
+
+// method draw for Square
+defmethod(draw,
+          [](Square c) {
+            std::cout << "Draw Square" << std::endl;
+          });
+          </code></pre>
+        </section>
+
+        <section>
+          <h2>How does it look in C++?</h2>
+          <pre><code data-trim data-noescape>
+// defines a generic method with 1 argument called "perimeter" that return a float
+auto perimeter = defgeneric<1, float>();
+
+// method perimeter for Circle
+defmethod(perimeter,
+          [](Circle c) {
+            return 2 * (float)M_PI * c.radius;
+          });
+
+// method perimeter for Square
+defmethod(perimeter,
+          [](Square c) {
+            return 4 * c.length;
+          });
+          </code></pre>
+        </section>
+
+        <section>
+          <h2>How does it look in C++?</h2>
+          <pre><code data-trim data-noescape>
+ std::vector< std::any > shapes = {
+    Circle{1.0f},
+    Square{1.0f},
+  };
+
+  for (auto shape : shapes) {
+    draw(shape);
+    std::cout << "perimeter: " << perimeter(shape) << std::endl;
+  }
+         </code></pre>
+
+          <p><a href="https://github.com/guillaume-michel/generic-cpp">https://github.com/guillaume-michel/generic-cpp</a></p>
+
+          <p><a href="https://godbolt.org/z/9nXFE2">https://godbolt.org/z/9nXFE2</a></p>
+        </section>
+
+        <section>
+          <h2>Pros/Cons</h2>
+          <ul>
+            <li>No mix concepts</li>
+            <li>Can add a polymorphic method to a class without recompiling it</li>
+            <li>Private implementation and modules help enforce encapsulation</li>
+            <li>Loose type safety but it can be improved with support in the language</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>Potential syntax in C++</h2>
+          <pre><code data-trim data-noescape>
+generic void draw(auto shape);
+method void draw(Circle c) {
+  std::cout << "Draw Circle" << std::endl;
+}
+method void draw(Square c) {
+  std::cout << "Draw Square" << std::endl;
+}
+generic float perimeter(auto shape);
+method float perimeter(Circle c) {
+  return 2 * (float)M_PI * c.radius;
+}
+method float perimeter(Square c) {
+  return 4 * c.length;
+}
+          </code></pre>
+
+          <p>Metaclass could help enforcing type safety by generating the right interface</p>
+        </section>
+
+
+      </div>
+	</div>
+
+	<script src="js/reveal.js"></script>
+
+	<script>
+	  // More info about config & dependencies:
+	  // - https://github.com/hakimel/reveal.js#configuration
+	  // - https://github.com/hakimel/reveal.js#dependencies
+	  Reveal.initialize({
+          // Display the page number of the current slide
+	      slideNumber: 'c/t',
+
+          // Add the current slide number to the URL hash so that reloading the
+	      // page/copying the URL will return you to the same slide
+	      hash: true,
+
+		  dependencies: [
+			  { src: 'plugin/markdown/marked.js' },
+			  { src: 'plugin/markdown/markdown.js' },
+			  { src: 'plugin/notes/notes.js', async: true },
+			  { src: 'plugin/highlight/highlight.js', async: false }
+		  ]
+	  });
+	</script>
+  </body>
 </html>
